@@ -1,0 +1,86 @@
+---
+- name: Provision and configure Nginx web server on AWS
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    aws_region: "{{ lookup('env', 'AWS_DEFAULT_REGION') | default('us-east-1', true) }}"
+    ec2_key_name: "ansible-web-key"  # ← Must exist in your AWS account
+    ec2_instance_type: "t3.micro"
+    # Amazon Linux 2023 AMI (us-east-1) — update if using different region
+    ec2_image: "ami-0ac019f4fcb7cb7e6"
+    security_group_name: "web-server-sg"
+    tag_name: "AnsibleWebServer"
+
+  tasks:
+    - name: Create security group (allow SSH + HTTP)
+      amazon.aws.ec2_group:
+        name: "{{ security_group_name }}"
+        description: "Web server SG - SSH and HTTP"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 80
+            to_port: 80
+            cidr_ip: 0.0.0.0/0
+        rules_egress:
+          - proto: -1
+            cidr_ip: 0.0.0.0/0
+      register: sg
+
+    - name: Launch EC2 instance
+      amazon.aws.ec2_instance:
+        name: "{{ tag_name }}"
+        region: "{{ aws_region }}"
+        image_id: "{{ ec2_image }}"
+        instance_type: "{{ ec2_instance_type }}"
+        key_name: "{{ ec2_key_name }}"
+        security_groups: ["{{ security_group_name }}"]
+        wait: yes
+        tags:
+          Name: "{{ tag_name }}"
+          Environment: demo
+      register: ec2
+
+    - name: Wait for SSH connectivity
+      wait_for:
+        host: "{{ ec2.instance.public_ip }}"
+        port: 22
+        delay: 10
+        timeout: 300
+      delegate_to: localhost
+
+    - name: Add instance to in-memory inventory
+      add_host:
+        name: "{{ ec2.instance.public_ip }}"
+        groups: web_servers
+        ansible_user: ec2-user
+        ansible_ssh_private_key_file: "~/.ssh/{{ ec2_key_name }}.pem"
+
+- name: Configure Nginx web server
+  hosts: web_servers
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: Install Nginx
+      amazon.aws.yum:
+        name: nginx
+        state: present
+
+    - name: Start and enable Nginx
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Deploy custom index page
+      template:
+        src: ../templates/index.html.j2
+        dest: /usr/share/nginx/html/index.html
+        owner: root
+        group: root
+        mode: '0644'
