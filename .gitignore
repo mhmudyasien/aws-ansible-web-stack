@@ -1,0 +1,15 @@
+# Ansible
+*.retry
+
+# SSH keys (NEVER commit)
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Local inventory or vault files
+host_vars/
+group_vars/
