@@ -1,7 +1,5 @@
 # aws-ansible-web-stack
 
-# aws-ansible-web-stack
-
 Automated deployment of a secure Nginx web server on AWS using Ansible.
 
 > 🔧 **DevOps focus**: Infrastructure-as-Code, idempotency, security, and reproducibility.
